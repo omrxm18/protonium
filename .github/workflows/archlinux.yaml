@@ -1,0 +1,34 @@
+name: Build the ArchLinux package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-archpkg:
+    runs-on: archlinux:latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: setup nodejs v22
+        uses: actions/setup-node@v7
+        with:
+            node-version: 22
+            cache: npm
+
+      - name: install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: build ArchPKG
+        run: npm run build-arch
+
+      - name: upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ArchPKG
+          path: |
+            aur/*.pkg.tar.zst
+            aur/*.tar.gz
