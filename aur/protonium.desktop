@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=ProtonMail
+Name=Protonium
 Comment=Unofficial Electron wrapper for mail.proton.me
-Exec=protonmail-desktop %U
+Exec=protonium %U
 Terminal=false
 Type=Application
-Icon=protonmail-desktop
-StartupWMClass=protonmail-desktop
+Icon=protonium
+StartupWMClass=protonium
 Categories=Network;Email;

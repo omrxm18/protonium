@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 const PROTON_URL = 'https://mail.proton.me';
-const PARTITION = 'persist:protonmail';
+const PARTITION = 'persist:protonium';
 
 // Safety-net only — NOT the primary sync mechanism. Proton's own web
 // client should already keep itself in sync via its own live-update
@@ -157,15 +157,14 @@ function createTray() {
       console.warn(`[tray] ${iconPath} exists but failed to load as an image.`);
     } else {
       console.warn(
-        `[tray] No icon found at ${iconPath} — using a generated placeholder. ` +
-          'Drop a real PNG there (e.g. Proton\'s mail icon) to fix this.'
+        `[tray] No icon found at ${iconPath} — using a generated placeholder. `
       );
     }
     image = nativeImage.createFromDataURL(PLACEHOLDER_TRAY_ICON_DATA_URL);
   }
 
   tray = new Tray(image);
-  tray.setToolTip('ProtonMail');
+  tray.setToolTip('Protonium');
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -208,7 +207,7 @@ if (!gotLock) {
     });
 
     if (process.platform === 'linux') {
-      app.setAppUserModelId('com.example.protonmail-desktop');
+      app.setAppUserModelId('com.omrxm18.protonium');
     }
 
     createWindow();

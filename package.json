@@ -1,20 +1,20 @@
 {
-  "name": "protonmail-desktop",
+  "name": "protonium",
   "version": "0.1.0",
   "description": "Unofficial Electron wrapper for mail.proton.me",
-  "homepage": "https://github.com/omrxm18/protonmail.desktop",
+  "homepage": "https://github.com/omrxm18/protonium.desktop",
   "author": {
   "name": "omrxm18",
   "email": "omrxm18@proton.me"
   },
-  "desktopName": "protonmail-dekstop.desktop",
+  "desktopName": "protonium.desktop",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p .",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder",
     "dir": "npm run dist -- -l dir",
-    "prepare-arch": "tar -czvf \"aur/protonmail-desktop-$npm_package_version.tar.gz\" -C release/linux-unpacked/ .",
+    "prepare-arch": "tar -czvf \"aur/protonium-$npm_package_version.tar.gz\" -C release/linux-unpacked/ .",
     "build-arch": "npm run dir && npm run prepare-arch && cd aur && makepkg -s"
   },
   "devDependencies": {
@@ -24,8 +24,8 @@
     "typescript": "^7.0.2"
   },
   "build": {
-    "appId": "com.omrxm18.protonmail-desktop",
-    "productName": "ProtonMail",
+    "appId": "com.omrxm18.protonium",
+    "productName": "Protonium",
     "directories": { "output": "release" },
     "linux": {
       "target": ["AppImage", "deb", "rpm"],
