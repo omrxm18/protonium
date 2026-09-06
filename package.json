@@ -2,6 +2,7 @@
   "name": "protonmail-desktop",
   "version": "0.1.0",
   "description": "Unofficial Electron wrapper for mail.proton.me",
+  "author": "omrxm18",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p .",
