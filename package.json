@@ -3,14 +3,19 @@
   "version": "0.1.0",
   "description": "Unofficial Electron wrapper for mail.proton.me",
   "homepage": "https://github.com/omrxm18/protonmail.desktop",
-  "author": "omrxm18 <omrxm18@proton.me>",
-  "email": "omrxm18@proton.me",
+  "author": {
+  "name": "omrxm18",
+  "email": "omrxm18@proton.me"
+  },
   "desktopName": "protonmail-dekstop.desktop",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p .",
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "dir": "npm run dist -- -l dir",
+    "prepare-arch": "tar -czvf \"aur/protonmail-desktop-$npm_package_version.tar.gz\" -C release/linux-unpacked/ .",
+    "build-arch": "npm run dir && npm run prepare-arch && cd aur && makepkg -s"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
@@ -23,7 +28,7 @@
     "productName": "ProtonMail",
     "directories": { "output": "release" },
     "linux": {
-      "target": ["AppImage", "deb", "rpm", "pacman", "tar.gz"],
+      "target": ["AppImage", "deb", "rpm"],
       "category": "Network",
       "icon": "assets/icon.png"
     },
