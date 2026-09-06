@@ -88,7 +88,7 @@ function createWindow() {
     x: state.x,
     y: state.y,
     icon: (() => {
-      const p = path.join(__dirname, '..', 'assets', 'icon.png');
+      const p = path.join(app.getAppPath(), 'assets', 'icon.png');
       return fs.existsSync(p) ? p : undefined;
     })(),
     webPreferences: {
