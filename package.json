@@ -15,7 +15,7 @@
     "dist": "npm run build && electron-builder",
     "dir": "npm run dist -- -l dir",
     "prepare-arch": "tar -czvf \"aur/protonium-$npm_package_version.tar.gz\" -C release/linux-unpacked/ .",
-    "build-arch": "npm run dir && npm run prepare-arch && cd aur && makepkg -s"
+    "build-arch": "npm run dir && npm run prepare-arch && cd aur && makepkg -s $MAKEPKG_FLAGS"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
