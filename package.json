@@ -2,7 +2,7 @@
   "name": "protonium",
   "version": "0.1.0",
   "description": "Unofficial Electron wrapper for mail.proton.me",
-  "homepage": "https://github.com/omrxm18/protonium.desktop",
+  "homepage": "https://github.com/omrxm18/protonium",
   "author": {
   "name": "omrxm18",
   "email": "omrxm18@proton.me"
@@ -10,11 +10,12 @@
   "desktopName": "protonium.desktop",
   "main": "dist/main.js",
   "scripts": {
+    "clean": "rm -rf release",
     "build": "tsc -p .",
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder",
+    "dist": "npm run clean && npm run build && electron-builder",
     "dir": "npm run dist -- -l dir",
-    "prepare-arch": "tar -czvf \"aur/protonium-$npm_package_version.tar.gz\" -C release/linux-unpacked/ .",
+    "prepare-arch": "tar -czvf \"aur/protonium-$npm_package_version.tar.gz\" -C release/linux*-unpacked/ .",
     "build-arch": "npm run dir && npm run prepare-arch && cd aur && makepkg -s $MAKEPKG_FLAGS"
   },
   "devDependencies": {
