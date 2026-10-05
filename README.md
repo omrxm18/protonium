@@ -18,13 +18,8 @@ if you desire:
 
 ## how to build
 
-if you really wanna use it
+if you want semi-dumb-explained instuctions, see the [Wiki](https://wiki.x01.dpdns.org/en/protonium/HOW-TO-BUILD)
 
-prepare:
-```bash
-git clone https://git.x01.dpdns.org/protonium.git && cd protonium
-npm ci
-```
 build-all:
 ```bash
 npm run dist
