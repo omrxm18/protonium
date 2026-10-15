@@ -1,6 +1,6 @@
 # Maintainer: omrxm18 <omrxm18@proton.me>
 pkgname=protonium-bin
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Unofficial Electron wrapper for mail.proton.me"
 arch=('x86_64')
