@@ -39,7 +39,9 @@ jobs:
           su builder -c "npm run dist"
 
       - name: build ArchPKG
-        run: su builder -c 'npm run build-arch'
+        run: |
+          su builder -c 'npm run prepare-arch'
+          su builder -c 'makepkg -D aur/ -s'
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
