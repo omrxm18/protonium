@@ -1,5 +1,5 @@
 # Maintainer: omrxm18 <omrxm18@proton.me>
-pkgname=protonium-bin
+pkgname=protonium-git
 pkgver=0.2.0
 pkgrel=1
 pkgdesc="Unofficial Electron wrapper for mail.proton.me"
@@ -21,7 +21,7 @@ provides=("${pkgname}")
 conflicts=("${pkgname}")
 
 source=(
-  "https://github.com/omrxm18/protonium/releases/download/v${pkgver}/${pkgname}-${pkgver}.tar.gz"
+  "git+https://git.x01.dpdns.org/protonium.git"
   "protonium.desktop"
   "icon.png"
 )
@@ -31,13 +31,19 @@ sha256sums=(
   '2f2b5b123cdc065bc42562eee7aa6fbaf1787f02271cf7d2b00e3bac65b6742e'
 )
 
+prepare () {
+  cd $srcdir/protonium
+  npm ci
+  npm run prepare-arch
+}
+
 package() {
   local instdir="$pkgdir/opt/protonium"
   install -dm755 "$instdir"
-  cp -r "$srcdir"/* "$instdir"/ || true
+  cp -a "$srcdir/protonium/release/linux-unpacked/." "$instdir/"
   rm -f "$instdir/protonium.desktop" "$instdir/icon.png"
 
-  chmod 4755 "$instdir/chrome-sandbox" || true
+  chmod 4755 "$instdir/chrome-sandbox"
 
   install -dm755 "$pkgdir/usr/bin"
   cat > "$pkgdir/usr/bin/protonium" <<'EOF'
