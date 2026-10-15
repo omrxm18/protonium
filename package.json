@@ -1,6 +1,6 @@
 {
   "name": "protonium",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Unofficial Electron wrapper for mail.proton.me",
   "homepage": "https://github.com/omrxm18/protonium",
   "author": {
@@ -15,8 +15,7 @@
     "start": "npm run build && electron .",
     "dist": "npm run clean && npm run build && electron-builder",
     "dir": "npm run dist -- -l dir",
-    "prepare-arch": "tar -czvf \"aur/protonium-$npm_package_version.tar.gz\" -C release/linux*-unpacked/ .",
-    "build-arch": "npm run dir && npm run prepare-arch && cd aur && makepkg -s $MAKEPKG_FLAGS"
+    "prepare-arch": "npm run dir && tar -czvf \"aur/protonium-$npm_package_version.tar.gz\" -C release/linux-unpacked/ ."
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
