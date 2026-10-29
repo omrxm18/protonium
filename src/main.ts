@@ -1,69 +1,38 @@
-import {
-  app,
-  BrowserWindow,
-  Menu,
-  Tray,
-  shell,
-  session,
-  nativeImage,
-  dialog,
-} from 'electron';
+import { app, BrowserWindow, Menu, Tray, shell, session, nativeImage, Notification, powerMonitor } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { randomUUID } from 'crypto';
 
-type Provider = 'proton' | 'google';
+const PROTON_URL = 'https://mail.proton.me';
+const PARTITION = 'persist:protonium';
 
-interface Account {
-  id: string;
-  provider: Provider;
-  label: string;
-  isDefault: boolean;
-}
+// Safety-net only — NOT the primary sync mechanism. Proton's own web
+// client should already keep itself in sync via its own live-update
+// connection (websocket or similar), the same way it does in a normal
+// visible tab; `backgroundThrottling: false` above is what lets that
+// keep running at full speed while hidden, at whatever cost Proton's own
+// client already pays — we're not adding overhead on top of it.
+//
+// A full page reload is comparatively expensive (re-downloads and
+// re-executes the whole JS bundle, re-renders everything), so this only
+// exists as an infrequent fallback in case that connection silently dies
+// while backgrounded for a long time. Thunderbird's IMAP IDLE doesn't
+// need this at all; if it falls back to polling, it's a cheap "any new
+// mail?" check, not a full client reload — this is a coarser version of
+// that same idea, so the interval stays long.
+const SYNC_SAFETY_RELOAD_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
-const PROVIDER_URLS: Record<Provider, string> = {
-  proton: 'https://mail.proton.me',
-  google: 'https://mail.google.com',
-};
+// A minimal solid-purple 16x16 PNG, used only when no real tray-icon.png is
+// present, so the tray icon is never literally invisible (an empty
+// nativeImage renders as nothing on most desktop environments).
 
-const PROVIDER_LABELS: Record<Provider, string> = {
-  proton: 'Proton Mail',
-  google: 'Gmail',
-};
+const PLACEHOLDER_TRAY_ICON_DATA_URL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGUlEQVR4nGPI9fr/nxLMMGrAqAGjBgwXAwDI8rUfLuPiVgAAAABJRU5ErkJggg==';
 
-// Host allow-lists per provider. Anything outside these is handed to the
-// system browser instead of navigated to in-app (covers OAuth hops, help
-// links, etc.). Google's own login flow bounces across a few subdomains,
-// so it gets a slightly wider net than Proton does.
-const PROVIDER_HOSTS: Record<Provider, (hostname: string) => boolean> = {
-  proton: (h) => h.endsWith('proton.me') || h.endsWith('protonmail.com'),
-  google: (h) =>
-    h.endsWith('google.com') ||
-    h.endsWith('googleusercontent.com') ||
-    h.endsWith('gstatic.com'),
-};
+const USER_AGENT =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) ' +
+  'Chrome/126.0.0.0 Safari/537.36';
 
-function partitionFor(account: Account): string {
-  return `persist:${account.provider}-${account.id}`;
-}
-
-const ACCOUNTS_FILE = path.join(app.getPath('userData'), 'accounts.json');
-
-function loadAccounts(): Account[] {
-  try {
-    return JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf-8'));
-  } catch {
-    return [];
-  }
-}
-
-function saveAccounts(accounts: Account[]): void {
-  try {
-    fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2));
-  } catch (err) {
-    console.error('[accounts] failed to save', err);
-  }
-}
+const STATE_FILE = path.join(app.getPath('userData'), 'window-state.json');
 
 interface WindowState {
   width: number;
@@ -72,52 +41,48 @@ interface WindowState {
   y?: number;
 }
 
-function stateFileFor(accountId: string): string {
-  return path.join(app.getPath('userData'), `window-state-${accountId}.json`);
-}
-
-function loadWindowState(accountId: string): WindowState {
+function loadWindowState(): WindowState {
   try {
-    return JSON.parse(fs.readFileSync(stateFileFor(accountId), 'utf-8'));
+    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
   } catch {
     return { width: 1200, height: 800 };
   }
 }
 
-function saveWindowState(accountId: string, win: BrowserWindow) {
+function saveWindowState(win: BrowserWindow) {
   if (win.isDestroyed()) return;
+  const bounds = win.getBounds();
   try {
-    fs.writeFileSync(stateFileFor(accountId), JSON.stringify(win.getBounds()));
+    fs.writeFileSync(STATE_FILE, JSON.stringify(bounds));
   } catch {
     /* non-fatal */
   }
 }
 
-// Safety-net only — NOT the primary sync mechanism. Each provider's own web
-// client should already keep itself in sync via its own live-update
-// connection while backgrounded (backgroundThrottling is left on for these
-// windows at default, so this stays a coarse, infrequent fallback rather
-// than a substitute for that connection).
-const SYNC_SAFETY_RELOAD_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
-
-// A minimal solid-purple 16x16 PNG, used only when no real tray-icon.png is
-// present, so the tray icon is never literally invisible.
-const PLACEHOLDER_TRAY_ICON_DATA_URL =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGUlEQVR4nGPI9fr/nxLMMGrAqAGjBgwXAwDI8rUfLuPiVgAAAABJRU5ErkJggg==';
-
-const USER_AGENT =
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) ' +
-  'Chrome/126.0.0.0 Safari/537.36';
-
-const windows = new Map<string, BrowserWindow>(); // accountId -> window
+let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let syncReloadTimer: NodeJS.Timeout | null = null;
 
-function createWindow(account: Account): BrowserWindow {
-  const state = loadWindowState(account.id);
+function startSyncReloadLoop() {
+  if (syncReloadTimer) return;
+  syncReloadTimer = setInterval(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.webContents.reload();
+    }
+  }, SYNC_SAFETY_RELOAD_INTERVAL_MS);
+}
 
-  const win = new BrowserWindow({
+function reloadIfHidden() {
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+    mainWindow.webContents.reload();
+  }
+}
+
+function createWindow() {
+  const state = loadWindowState();
+
+  mainWindow = new BrowserWindow({
     width: state.width,
     height: state.height,
     x: state.x,
@@ -127,33 +92,35 @@ function createWindow(account: Account): BrowserWindow {
       return fs.existsSync(p) ? p : undefined;
     })(),
     webPreferences: {
-      partition: partitionFor(account),
+      partition: PARTITION,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
   });
 
-  win.setTitle(`Protonium — ${account.label}`);
-  win.webContents.setUserAgent(USER_AGENT);
-  win.loadURL(PROVIDER_URLS[account.provider]);
+  mainWindow.webContents.setUserAgent(USER_AGENT);
+  mainWindow.loadURL(PROTON_URL);
 
-  const isAllowedHost = (url: string): boolean => {
+  const isProtonHost = (url: string) => {
     try {
-      return PROVIDER_HOSTS[account.provider](new URL(url).hostname);
+      const { hostname } = new URL(url);
+      return hostname.endsWith('proton.me') || hostname.endsWith('protonmail.com');
     } catch {
       return false;
     }
   };
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isAllowedHost(url)) return { action: 'allow' };
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isProtonHost(url)) {
+      return { action: 'allow' };
+    }
     shell.openExternal(url);
     return { action: 'deny' };
   });
 
-  win.webContents.on('will-navigate', (event, url) => {
-    if (!isAllowedHost(url)) {
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isProtonHost(url)) {
       event.preventDefault();
       shell.openExternal(url);
     }
@@ -162,199 +129,64 @@ function createWindow(account: Account): BrowserWindow {
   let saveTimer: NodeJS.Timeout | null = null;
   const scheduleSave = () => {
     if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => saveWindowState(account.id, win), 500);
+    saveTimer = setTimeout(() => mainWindow && saveWindowState(mainWindow), 500);
   };
-  win.on('resize', scheduleSave);
-  win.on('move', scheduleSave);
+  mainWindow.on('resize', scheduleSave);
+  mainWindow.on('move', scheduleSave);
 
-  win.on('close', (event) => {
+  mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
-      win.hide();
+      mainWindow?.hide();
     }
   });
 
-  win.on('closed', () => {
-    windows.delete(account.id);
+  mainWindow.on('closed', () => {
+    mainWindow = null;
   });
-
-  session
-    .fromPartition(partitionFor(account))
-    .setPermissionRequestHandler((_wc, permission, callback) => {
-      callback(permission === 'notifications');
-    });
-
-  return win;
-}
-
-function showOrCreateWindow(account: Account): BrowserWindow {
-  const existing = windows.get(account.id);
-  if (existing && !existing.isDestroyed()) {
-    existing.isVisible() ? existing.focus() : existing.show();
-    return existing;
-  }
-  const win = createWindow(account);
-  windows.set(account.id, win);
-  return win;
-}
-
-function focusMostRecentWindow() {
-  const any = [...windows.values()][0];
-  if (!any) return;
-  if (any.isMinimized()) any.restore();
-  if (!any.isVisible()) any.show();
-  any.focus();
-}
-
-function addAccount(provider: Provider, makeDefault = false): Account {
-  const accounts = loadAccounts();
-
-  const account: Account = {
-    id: randomUUID(),
-    provider,
-    label: PROVIDER_LABELS[provider],
-    isDefault: makeDefault || accounts.length === 0,
-  };
-
-  if (account.isDefault) {
-    accounts.forEach((a) => (a.isDefault = false));
-  }
-
-  accounts.push(account);
-  saveAccounts(accounts);
-  refreshTrayMenu();
-  return account;
-}
-
-function setDefaultAccount(accountId: string) {
-  const accounts = loadAccounts();
-  accounts.forEach((a) => (a.isDefault = a.id === accountId));
-  saveAccounts(accounts);
-  refreshTrayMenu();
-}
-
-function removeAccount(accountId: string) {
-  const win = windows.get(accountId);
-  if (win && !win.isDestroyed()) {
-    isQuittingWindow(win); // see note below
-    win.destroy();
-  }
-  windows.delete(accountId);
-
-  const accounts = loadAccounts().filter((a) => a.id !== accountId);
-  if (accounts.length > 0 && !accounts.some((a) => a.isDefault)) {
-    accounts[0].isDefault = true;
-  }
-  saveAccounts(accounts);
-  refreshTrayMenu();
-}
-
-// close-hides windows by default; this lets removeAccount force a real close
-function isQuittingWindow(_win: BrowserWindow) {
-  // no-op hook kept explicit so the intent at the removeAccount call site
-  // is obvious — the win.destroy() call right after bypasses the
-  // close -> hide interception entirely.
-}
-
-// First run: no accounts saved yet. Ask which provider to start with via a
-// native dialog (swap this for a real HTML picker window later if you want
-// a nicer first-run UI — the account-creation logic itself doesn't change).
-async function runFirstRunSetup() {
-  const { response } = await dialog.showMessageBox({
-    type: 'question',
-    title: 'Add your first account',
-    message: 'Which mail provider would you like to set up first?',
-    buttons: [PROVIDER_LABELS.proton, PROVIDER_LABELS.google, 'Cancel'],
-    defaultId: 0,
-    cancelId: 2,
-  });
-
-  if (response === 2) {
-    app.quit();
-    return;
-  }
-
-  const provider: Provider = response === 0 ? 'proton' : 'google';
-  const account = addAccount(provider, true);
-  showOrCreateWindow(account);
-  createTray();
-  startSyncReloadLoop();
-}
-
-async function promptAddAccount() {
-  const { response } = await dialog.showMessageBox({
-    type: 'question',
-    title: 'Add account',
-    message: 'Which mail provider?',
-    buttons: [PROVIDER_LABELS.proton, PROVIDER_LABELS.google, 'Cancel'],
-    defaultId: 0,
-    cancelId: 2,
-  });
-  if (response === 2) return;
-
-  const provider: Provider = response === 0 ? 'proton' : 'google';
-  const account = addAccount(provider, false);
-  showOrCreateWindow(account);
-}
-
-function loadTrayIcon(): Electron.NativeImage {
-  const iconPath = path.join(__dirname, '..', 'assets', 'tray-icon.png');
-  let image = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : null;
-
-  if (!image || image.isEmpty()) {
-    if (fs.existsSync(iconPath)) {
-      console.warn(`[tray] ${iconPath} exists but failed to load as an image.`);
-    } else {
-      console.warn(`[tray] No icon found at ${iconPath} — using a generated placeholder.`);
-    }
-    image = nativeImage.createFromDataURL(PLACEHOLDER_TRAY_ICON_DATA_URL);
-  }
-  return image;
-}
-
-function buildTrayMenu(): Menu {
-  const accounts = loadAccounts();
-
-  const accountItems = accounts.map((a) => ({
-    label: a.isDefault ? `${a.label} (default)` : a.label,
-    click: () => showOrCreateWindow(a),
-  }));
-
-  return Menu.buildFromTemplate([
-    ...accountItems,
-    { type: 'separator' as const },
-    { label: 'Add account…', click: () => void promptAddAccount() },
-    { type: 'separator' as const },
-    {
-      label: 'Quit',
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      },
-    },
-  ]);
-}
-
-function refreshTrayMenu() {
-  tray?.setContextMenu(buildTrayMenu());
 }
 
 function createTray() {
-  tray = new Tray(loadTrayIcon());
-  tray.setToolTip('Protonium');
-  tray.setContextMenu(buildTrayMenu());
-  tray.on('click', focusMostRecentWindow);
-}
+  const iconPath = path.join(__dirname, '..', 'assets', 'tray-icon.png');
+  let image = fs.existsSync(iconPath)
+    ? nativeImage.createFromPath(iconPath)
+    : null;
 
-function startSyncReloadLoop() {
-  if (syncReloadTimer) return;
-  syncReloadTimer = setInterval(() => {
-    for (const win of windows.values()) {
-      if (!win.isDestroyed() && !win.isVisible()) {
-        win.webContents.reload();
-      }
+    if (!image || image.isEmpty()) {
+    if (fs.existsSync(iconPath)) {
+      console.warn(`[tray] ${iconPath} exists but failed to load as an image.`);
+    } else {
+      console.warn(
+        `[tray] No icon found at ${iconPath} — using a generated placeholder. `
+      );
     }
-  }, SYNC_SAFETY_RELOAD_INTERVAL_MS);
+    image = nativeImage.createFromDataURL(PLACEHOLDER_TRAY_ICON_DATA_URL);
+  }
+
+  tray = new Tray(image);
+  tray.setToolTip('Protonium');
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: 'Show',
+        click: () => mainWindow?.show(),
+      },
+      {
+        label: 'Quit',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ])
+  );
+  tray.on('click', () => {
+    if (mainWindow?.isVisible()) {
+      mainWindow.focus();
+    } else {
+      mainWindow?.show();
+    }
+  });
 }
 
 const gotLock = app.requestSingleInstanceLock();
@@ -362,34 +194,29 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    focusMostRecentWindow();
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    }
   });
 
-  app.whenReady().then(async () => {
+  app.whenReady().then(() => {
+    session.fromPartition(PARTITION).setPermissionRequestHandler((_wc, permission, callback) => {
+      callback(permission === 'notifications');
+    });
+
     if (process.platform === 'linux') {
       app.setAppUserModelId('com.omrxm18.protonium');
     }
 
-    const accounts = loadAccounts();
-
-    if (accounts.length === 0) {
-      await runFirstRunSetup();
-      return;
-    }
-
-    const toOpen = accounts.filter((a) => a.isDefault);
-    (toOpen.length > 0 ? toOpen : accounts.slice(0, 1)).forEach(showOrCreateWindow);
-
+    createWindow();
     createTray();
     startSyncReloadLoop();
 
     app.on('activate', () => {
-      if (windows.size === 0) {
-        const def = loadAccounts().find((a) => a.isDefault);
-        if (def) showOrCreateWindow(def);
-      } else {
-        focusMostRecentWindow();
-      }
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      else mainWindow?.show();
     });
   });
 
@@ -402,14 +229,7 @@ if (!gotLock) {
   });
 
   app.on('window-all-closed', () => {
-    // Tray-resident app: stay alive on all platforms except macOS's usual
-    // dock-icon convention, same as the original single-account version.
     if (process.platform !== 'darwin') {
-      // intentionally not quitting — windows are hidden, not closed, via
-      // the close handler above; this only fires if every window was
-      // force-destroyed (e.g. removeAccount).
     }
   });
 }
-
-export { addAccount, setDefaultAccount, removeAccount };
