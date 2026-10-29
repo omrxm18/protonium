@@ -10,7 +10,6 @@
   "desktopName": "protonium.desktop",
   "main": "dist/main.js",
   "scripts": {
-    "clean": "rm -rf release",
     "build": "tsc -p .",
     "start": "npm run build && electron .",
     "dist": "npm run clean && npm run build && electron-builder",

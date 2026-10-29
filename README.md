@@ -19,24 +19,3 @@ if you desire:
 ## how to build
 
 if you want semi-dumb-explained instuctions, see the [Wiki](https://wiki.x01.dpdns.org/en/protonium/HOW-TO-BUILD)
-
-build-all:
-```bash
-npm run dist
-```
-
-Arch Linux:
-```bash
-npm run build-arch
-```
-
-if you don't want the heavy building of all other formats, you can specify yours directly:
-```bash
-npm run dist -- -l <option>
-
-available options:
-  deb  build for debian
-  rpm  build for fedora/redhat, etc..
-  dir  the unpacked app at release/*-unpacked
-  AppImage  build the .AppImage (usable anywhere)
-```
