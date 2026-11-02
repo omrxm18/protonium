@@ -12,13 +12,13 @@
   "scripts": {
     "build": "tsc -p .",
     "start": "npm run build && electron .",
-    "dist": "npm run clean && npm run build && electron-builder",
+    "dist": "npm run build && electron-builder",
     "dir": "npm run dist -- -l dir",
     "prepare-arch": "npm run dir && tar -czvf \"aur/protonium-$npm_package_version.tar.gz\" -C release/linux-unpacked/ ."
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
-    "electron": "^41.10.2",
+    "electron": "^45.1.0",
     "electron-builder": "^26.16.0",
     "typescript": "^7.0.2"
   },
